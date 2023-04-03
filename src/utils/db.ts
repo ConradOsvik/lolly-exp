@@ -15,14 +15,14 @@ export async function getMatchesFromDB(
         const matchlist = await prisma.matchData.findMany({
             where: {
                 platform: platform,
-                matchParticipantsData: {
+                matchParticipantData: {
                     some: {
                         summonerName: summonerName
                     }
                 }
             },
             include: {
-                matchParticipantsData: true
+                matchParticipantData: true
             },
             orderBy: {
                 matchId: 'desc'
@@ -32,18 +32,16 @@ export async function getMatchesFromDB(
         })
 
         if (matchlist.length === 0)
-            throw { status: 404, message: 'no matches found' }
+            throw { status: 404, msg: 'no matches found' }
 
         return {
             status: 200,
-            message: 'success',
             data: matchlist
         }
     } catch (err: any) {
         return {
             status: Number(err.status) || 500,
-            message: String(err.message) || 'something went wrong on our end',
-            data: []
+            msg: String(err.message) || 'something went wrong on our end'
         }
     }
 }
@@ -120,7 +118,44 @@ export async function updateMatchesInDB(
                     mapId: matchData.info.mapId,
                     platform: platform,
                     platformId: matchData.info.platformId,
-                    queueId: matchData.info.queueId
+                    queueId: matchData.info.queueId,
+                    blueBaronKills:
+                        matchData.info.teams[0].objectives.baron.kills,
+                    blueChampionKills:
+                        matchData.info.teams[0].objectives.champion.kills,
+                    blueDragonKills:
+                        matchData.info.teams[0].objectives.dragon.kills,
+                    blueInhibitorKills:
+                        matchData.info.teams[0].objectives.inhibitor.kills,
+                    blueRiftHeraldKills:
+                        matchData.info.teams[0].objectives.riftHerald.kills,
+                    blueTowerKills:
+                        matchData.info.teams[0].objectives.tower.kills,
+                    redBaronKills:
+                        matchData.info.teams[1].objectives.baron.kills,
+                    redChampionKills:
+                        matchData.info.teams[1].objectives.champion.kills,
+                    redDragonKills:
+                        matchData.info.teams[1].objectives.dragon.kills,
+                    redInhibitorKills:
+                        matchData.info.teams[1].objectives.inhibitor.kills,
+                    redRiftHeraldKills:
+                        matchData.info.teams[1].objectives.riftHerald.kills,
+                    redTowerKills:
+                        matchData.info.teams[1].objectives.tower.kills,
+                    blueFirstBaronKill:
+                        matchData.info.teams[0].objectives.baron.first,
+                    blueFirstChampionKill:
+                        matchData.info.teams[0].objectives.champion.first,
+                    blueFirstDragonKill:
+                        matchData.info.teams[0].objectives.dragon.first,
+                    blueFirstInhibitorKill:
+                        matchData.info.teams[0].objectives.inhibitor.first,
+                    blueFirstRiftHeraldKill:
+                        matchData.info.teams[0].objectives.riftHerald.first,
+                    blueFirstTowerKill:
+                        matchData.info.teams[0].objectives.tower.first,
+                    blueWon: matchData.info.teams[0].win
                 }
             })
 
@@ -173,8 +208,6 @@ export async function updateMatchesInDB(
                             killingSprees: participant.killingSprees,
                             kills: participant.kills,
                             lane: participant.lane,
-                            largestCriticalStrike:
-                                participant.largestCriticalStrike,
                             largestKillingSpree:
                                 participant.largestKillingSpree,
                             largestMultiKill: participant.largestMultiKill,
@@ -186,9 +219,6 @@ export async function updateMatchesInDB(
                             magicDamageTaken: participant.magicDamageTaken,
                             neutralMinionsKilled:
                                 participant.neutralMinionsKilled,
-                            nexusKills: participant.nexusKills,
-                            nexusLost: participant.nexusLost,
-                            nexusTakedowns: participant.nexusTakedowns,
                             objectivesStolen: participant.objectivesStolen,
                             objectivesStolenAssists:
                                 participant.objectivesStolenAssists,
@@ -232,8 +262,6 @@ export async function updateMatchesInDB(
                             summoner2Casts: participant.summoner2Casts,
                             summoner2Id: participant.summoner2Id,
                             summonerName: participant.summonerName,
-                            teamEarlySurrendered:
-                                participant.teamEarlySurrendered,
                             teamId: participant.teamId,
                             teamPosition: participant.teamPosition,
                             timeCCingOthers: participant.timeCCingOthers,
@@ -269,24 +297,45 @@ export async function updateMatchesInDB(
                 })
                 .flat()
 
-        await prisma.matchData.createMany({
-            data: dbMatchDataList
-        })
+        try {
+            await prisma.matchData.createMany({
+                data: dbMatchDataList
+            })
 
-        await prisma.matchParticipantData.createMany({
-            data: dbMatchParticipantDataList
-        })
+            await prisma.matchParticipantData.createMany({
+                data: dbMatchParticipantDataList
+            })
+        } catch (err) {
+            if (err instanceof Prisma.PrismaClientKnownRequestError) {
+                if (err.code === 'P2002') {
+                    try {
+                        await prisma.matchData.updateMany({
+                            data: dbMatchDataList
+                        })
+
+                        await prisma.matchParticipantData.updateMany({
+                            data: dbMatchParticipantDataList
+                        })
+                    } catch (err: any) {
+                        return {
+                            status: Number(err.status) || 500,
+                            msg:
+                                String(err.message) ||
+                                'something went wrong on our end'
+                        }
+                    }
+                }
+            }
+        }
 
         return {
             status: 200,
-            message: 'success',
-            data: []
+            msg: 'success'
         }
     } catch (err: any) {
         return {
             status: Number(err.status) || 500,
-            message: String(err.message) || 'something went wrong on our end',
-            data: []
+            msg: String(err.message) || 'something went wrong on our end'
         }
     }
 }
@@ -296,22 +345,24 @@ export async function getSummonerFromDB(
     platform: PlatformType
 ) {
     try {
-        const summoner = await prisma.summonerData.findUniqueOrThrow({
+        const summoner = await prisma.summonerProfile.findUniqueOrThrow({
             where: {
                 summonerName_platform: { summonerName, platform }
             }
         })
 
+        if (!summoner) {
+            throw { status: 404, msg: 'no matches found' }
+        }
+
         return {
             status: 200,
-            message: 'success',
             data: summoner
         }
     } catch (err: any) {
         return {
             status: Number(err.status) || 500,
-            message: String(err.message) || 'something went wrong on our end',
-            data: {}
+            msg: String(err.message) || 'something went wrong on our end'
         }
     }
 }
@@ -387,14 +438,14 @@ export async function updateSummonerInDB(
             }
         })
 
-        const summoner = await prisma.summonerData.findUnique({
+        const summoner = await prisma.summonerProfile.findUnique({
             where: {
                 summonerName_platform: { summonerName, platform }
             }
         })
 
         if (!summoner) {
-            await prisma.summonerData.create({
+            await prisma.summonerProfile.create({
                 data: {
                     platform: platform,
                     summonerName: summonerData.name,
@@ -410,7 +461,7 @@ export async function updateSummonerInDB(
         }
 
         if (summoner)
-            await prisma.summonerData.update({
+            await prisma.summonerProfile.update({
                 where: {
                     summonerName_platform: { summonerName, platform }
                 },
@@ -429,14 +480,12 @@ export async function updateSummonerInDB(
 
         return {
             status: 200,
-            message: 'success',
-            data: {}
+            msg: 'success'
         }
     } catch (err: any) {
         return {
             status: Number(err.status) || 500,
-            message: String(err.message) || 'something went wrong on our end',
-            data: {}
+            msg: String(err.message) || 'something went wrong on our end'
         }
     }
 }

@@ -51,13 +51,17 @@ export const summonerAtom = atomWithStorage<string>('summoner', '')
 interface SearchState {
     summoner: string
     platform: regions
+    suggestedSummoners: string[]
+    suggestionTab: 'suggestions' | 'favorites'
 }
 
 export const useSearchStore = create<SearchState>()(
     persist(
         (set, get) => ({
             summoner: '',
-            platform: undefined
+            platform: undefined,
+            suggestedSummoners: [],
+            suggestionTab: 'suggestions'
         }),
         {
             name: 'search-storage',
